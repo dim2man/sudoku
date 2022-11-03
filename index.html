@@ -1,9 +1,230 @@
 <!doctype html>
 <html>
 <head>
-  <title>Sudoku</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Судоку</title>
+	<style type="text/css">
+		* {margin: 0; padding: 0; box-sizing: border-box;}
+		html {font-family: sans-serif;}
+		h1 {font-size: 1rem; text-align: center; margin: 0.5rem 0;}
+		button {cursor: pointer;}
+		.container {display: flex; gap: 0.5rem;}
+		#field {display: grid; margin: 0 calc(0.5rem - 1px); grid-template: repeat(9, 1rem) / repeat(9, 1rem); border: solid #000 1px; width: 9rem; box-sizing: content-box;}
+		#field button {border: solid #ccc 1px; background-color: #fff; line-height: 1rem; vertical-align: middle; text-align: center; font-size: 0.7rem;}
+		#field button[data-top] {border-top-color: #000;}
+		#field button[data-left] {border-left-color: #000;}
+		#field button[data-right] {border-right-color: #000;}
+		#field button[data-bottom] {border-bottom-color: #000;}
+		#field button.guess {display: grid;grid-template: repeat(3, calc(0.333rem - 1px)) / repeat(3, calc(0.333rem - 1px));font-size: 0.29rem; line-height: calc(0.333rem - 1px);}
+		#field .selectedArea {background-color: #eee;}
+		#field .selectedNum {background-color: #ccc;}
+		html #field .selectedCell {background-color: #cfc;}
+		#buttons {display: flex; color: #000;}
+		#buttons.guess {color: #6a6;}
+		.button {width: 1rem; height: 1rem; line-height: 1rem; vertical-align: middle; text-align: center; border: none; background-color: #fff; font-size: 0.7rem; color: inherit;}
+		#mode {width: 1rem; height: 1rem; background-color: #000; border: none;}
+		#mode.guess {background-color: #6a6;}
+
+		@media (orientation: landscape) {
+			html {font-size: 8.333vh;}
+			.container {flex-direction: row;}
+			#buttons {flex-direction: column;}
+		}
+
+		@media (orientation: portrait) {
+			html {font-size: 10vw;}
+			.container {flex-direction: column;}
+			#buttons {flex-direction: row;}
+		}
+	</style>
+	<script type="text/javascript">
+		const SELECTED_CLASSES = ['selectedCell', 'selectedArea', 'selectedNum'];
+		const VALS=9;
+		let fieldEl, buttonsEl, modeEl;
+		const field = [];
+		const selected = {row: 0, col: 0, quad: 0, num: 0};
+		let mode = 0; // 0 - write, 1 - guess 
+
+		function handleCellClick(e) {
+			const buttonEl = e.target;
+			selected.row = +buttonEl.dataset.row;
+			selected.col = +buttonEl.dataset.col;
+			selected.quad = +buttonEl.dataset.quad;
+			selected.num = +buttonEl.dataset.num;
+			drawAllSelections();
+		}
+
+		function handleNumClick(e) {
+			const buttonEl = e.target;
+			const num = +buttonEl.dataset.num;
+			if (selected.row && selected.col) {
+				if (mode === 0) {
+					selected.num = num;
+					field[selected.row-1][selected.col-1].num = num;
+				} else {
+					selected.num = 0;
+					field[selected.row-1][selected.col-1].num = 0;
+					const {guess} =field[selected.row-1][selected.col-1];
+					if (guess.has(num)) {
+						guess.delete(num);
+					} else {
+						guess.add(num);
+					}
+				}
+				drawNumber(selected.row, selected.col);
+				dropClassSelection('selectedNum');
+				selected.num && drawSelection({num: selected.num}, 'selectedNum');
+			}
+		}
+
+		function handleModeClick() {
+			mode = 1 - mode;
+			drawMode();
+		}
+
+		function genNumbers() {
+			// TODO
+			for(let r=0; r<VALS; r++) {
+				field[r] = [];
+				for(let c=0; c<VALS; c++) {
+					field[r][c] = {
+						num: Math.random() > 0.5 ? Math.floor(Math.random()*9)+1 : 0,
+						fixed: true,
+						guess: new Set()
+					};
+				}
+			}
+		}
+
+		function drawNumbers() {
+			for(let r=1; r<=VALS; r++) {
+				for(let c=1; c<=VALS; c++) {
+					drawNumber(r, c);
+				}
+			}
+		}
+
+		function drawNumber(row, col) {
+			const {num, guess} = field[row-1][col-1];
+			const buttonEl = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+
+			while (buttonEl.firstChild) buttonEl.firstChild.remove();
+
+			if (num) {
+				buttonEl.classList.remove('guess');
+				buttonEl.dataset.num = num;
+				buttonEl.appendChild(document.createTextNode(num));
+				return;
+			}
+
+			if (guess.size > 0) {
+				buttonEl.classList.add('guess');
+				for(let v=1; v<=VALS; v++) {
+					if (guess.has(v)) {
+						const divEl = document.createElement('div');
+						divEl.style.gridRow = Math.floor((v-1)/3) + 1;
+						divEl.style.gridColumn = ((v-1) % 3) + 1;
+						divEl.appendChild(document.createTextNode(v));
+						buttonEl.appendChild(divEl);
+					}
+				}
+			}
+		}
+
+		function dropClassSelection(cls) {
+			Array.from(document.querySelectorAll(`.${cls}`)).forEach(el => 
+				el.classList.remove(cls)
+			);
+		}
+
+		function dropSelection() {
+			SELECTED_CLASSES.forEach(dropClassSelection);
+		}
+
+		function drawSelection(types, cls) {
+			Array.from(document.querySelectorAll(
+				Object.entries(types)
+					.reduce((acc, [type, val]) => `${acc}[data-${type}="${val}"]`, '')
+			)).forEach(el => 
+				el.classList.add(cls)
+			);
+		}
+
+		function drawAllSelections() {
+			dropSelection();
+			selected.row && drawSelection({row: selected.row}, 'selectedArea');
+			selected.col && drawSelection({col: selected.col}, 'selectedArea');
+			selected.quad && drawSelection({quad: selected.quad}, 'selectedArea');
+			selected.num && drawSelection({num: selected.num}, 'selectedNum');
+			selected.row && selected.col && drawSelection({row: selected.row, col: selected.col}, 'selectedCell');
+		}
+
+		function drawMode() {
+			if (mode === 0) {
+				modeEl.classList.remove('guess');
+				buttonsEl.classList.remove('guess');
+			} else {
+				modeEl.classList.add('guess');
+				buttonsEl.classList.add('guess');
+			}
+		}
+
+		function initFieldEl() {
+			for(let r=1; r<=VALS; r++) {
+				for(let c=1; c<=VALS; c++) {
+					const buttonEl = document.createElement('button');
+					buttonEl.style.gridRow = r;
+					buttonEl.style.gridColumn = c;
+					buttonEl.dataset.row = r;
+					buttonEl.dataset.col = c;
+					buttonEl.dataset.quad = 3*Math.floor((r-1)/3) + Math.floor((c-1)/3) + 1;
+					buttonEl.dataset.num = 0;
+					if(r%3 === 1) buttonEl.dataset.top = true;
+					if(r%3 === 0) buttonEl.dataset.bottom = true;
+					if(c%3 === 1) buttonEl.dataset.left = true;
+					if(c%3 === 0) buttonEl.dataset.right = true;
+					buttonEl.addEventListener('click', handleCellClick);
+					fieldEl.appendChild(buttonEl);
+				}
+			}
+		}
+
+		function initButtonsEl() {
+			for(let v=1; v<=VALS; v++) {
+				const buttonEl = document.createElement('button');
+				buttonEl.dataset.num = v;
+				buttonEl.addEventListener('click', handleNumClick);
+				buttonEl.classList.add('button');
+				buttonEl.appendChild(document.createTextNode(v));
+				buttonsEl.appendChild(buttonEl);
+			}
+		}
+
+		function initModeEl() {
+			modeEl.addEventListener('click', handleModeClick);
+			drawMode();
+		}
+
+		function init() {
+			fieldEl = document.getElementById('field');
+			buttonsEl = document.getElementById('buttons');
+			modeEl = document.getElementById('mode');
+			initFieldEl();
+			initButtonsEl();
+			initModeEl();
+			genNumbers();
+			drawNumbers();
+		}
+
+		window.onload = init;
+	</script>
 </head>
 <body>
-  <h1>Sudoku</h1>
+	<h1>Судоку</h1>
+	<div class="container">
+		<div id="field"></div>
+		<div id="options"><button id="mode"></button></div>
+		<div id="buttons"></div>
+	</div>
 </body>
 </html>
