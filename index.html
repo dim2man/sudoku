@@ -19,25 +19,26 @@
 		#field button.guess {display: grid;grid-template: repeat(3, calc(0.333rem - 1px)) / repeat(3, calc(0.333rem - 1px));font-size: 0.29rem; line-height: calc(0.333rem - 1px);}
 		#field .selectedArea {background-color: #eee;}
 		#field .selectedNum {background-color: #ccc;}
+		html #field .error {background-color: #fcc; color: #f00;}
 		html #field .selectedCell {background-color: #ccf;}
-		#options {display: flex; justify-content: space-around;}
+		#actions {display: flex; justify-content: space-around;}
 		#buttons {display: flex; color: #000;}
 		#buttons.guess {color: #336;}
 		.number {width: 1rem; height: 1rem; line-height: 1rem; vertical-align: middle; text-align: center; border: none; background-color: #fff; font-size: 0.7rem; color: inherit;}
-		#mode {width: 1rem; height: 1rem; background-color: #000; border: none;}
-		#mode.guess {background-color: #336;}
+		#actions > * {width: 1rem; height: 1rem; background-color: #000; border: none; color: #fff;}
+		#actions > #mode.guess {background-color: #336;}
 
 		@media (orientation: landscape) {
 			html {font-size: 8.333vh;}
 			.container {flex-direction: row;}
-			#options {flex-direction: column;}
+			#actions {flex-direction: column;}
 			#buttons {flex-direction: column;}
 		}
 
 		@media (orientation: portrait) {
 			html {font-size: 10vw;}
 			.container {flex-direction: column;}
-			#options {flex-direction: row; margin: 0 0.5rem;}
+			#actions {flex-direction: row; margin: 0 0.5rem;}
 			#buttons {flex-direction: row; margin: 0 0.5rem;}
 		}
 	</style>
@@ -45,11 +46,13 @@
 		const SELECTED_CLASSES = ['selectedCell', 'selectedArea', 'selectedNum'];
 		const VALS=9;
 		const SEED_PAIRS = [[0,0],[1,3],[2,6],[3,1],[4,4],[5,7],[6,2],[7,5],[8,8]];
-		const SEED_BATCH_SIZE = 10000;
-		let fieldEl, buttonsEl, modeEl;
-		const field = [];
+		const SEED_BATCH_SIZE = 1000;
+		let fieldEl, buttonsEl, modeEl, clearEl, nextEl, backEl;
+		let field = [];
 		const selected = {row: 0, col: 0, quad: 0, num: 0};
-		let mode = 0; // 0 - write, 1 - guess 
+		let mode = 0; // 0 - write, 1 - guess
+		let testCount = 0;
+		let stackField = [];
 
 		function handleCellClick(e) {
 			const buttonEl = e.currentTarget;
@@ -82,6 +85,7 @@
 				drawNumber(selected.row, selected.col, cell);
 				dropClassSelection('selectedNum');
 				selected.num && drawSelection({num: selected.num}, 'selectedNum');
+				drawErrors(getErrors(field));
 			}
 		}
 
@@ -90,26 +94,127 @@
 			drawMode();
 		}
 
-		function genAndDrawNumbers() {
-			genRandomSudoku()
-				.then(function(sudoku) {
-					for(let r=0; r<VALS; r++) {
-						field[r] = [];
-						for(let c=0; c<VALS; c++) {
-							const {num, guess} = sudoku[r][c];
-							const fixed = Math.random() > 0.4;
-							field[r][c] = {
-								num: fixed ? num : 0,
-								fixed,
-								guess: new Set()
-							};
-						}
+		function handleClearClick() {
+			if (selected.row && selected.col) {
+				const cell = field[selected.row-1][selected.col-1];
+				if (cell.fixed) return;
+				selected.num = 0;
+				cell.num = 0;
+				drawNumber(selected.row, selected.col, cell);
+				dropClassSelection('selectedNum');
+				drawErrors(getErrors(field));
+			}
+		}
+
+		function handleNextClick() {
+			testCount++;
+			stackField.push(field);
+			field = copySudoku(field);
+			switch(testCount) {
+				// case 1:
+				// 	const pairs = getFilledNotFixedPairs(field);
+				// 	if (pairs.length > 0) {
+				// 		const rndPair = Math.floor(Math.random() * pairs.length);
+				// 		const [r, c] = pairs[rndPair];
+				// 		const tmpSudoku = copySudoku(field);
+				// 		tmpSudoku[r][c].num = 0;
+				// 		fillGuesses(tmpSudoku);
+				// 		resolveSingleOptionsInSudoku(tmpSudoku);
+				// 		if (isSudokuFinished(tmpSudoku)) {
+				// 			field[r][c].num = 0;
+				// 		} else {
+				// 			field[r][c].fixed = true;
+				// 		}
+				// 		testCount--;
+				// 	}
+				// 	break;
+				case 1:
+					fillGuesses(field);
+					break;
+				default:
+					resolveSingleOptionsInSudoku(field, false);
+					break;
+			}
+			drawNumbers();
+			drawErrors(getErrors(field));
+		}
+
+		function handleBackClick() {
+			if (testCount) testCount--;
+			if (stackField.length) {
+				field = stackField.pop();
+			}
+			drawNumbers();
+			drawErrors(getErrors(field));
+		}
+
+		function fillGuesses(sudoku) {
+			traversSudoku(sudoku, ({num, guess}, r, c) => {
+				if(!num) {
+					for(let i=1; i<=VALS; i++) {
+						guess.add(i);
 					}
-					drawNumbers();
-				})
-				.catch(function(err) {
+					for (let r2=0; r2<VALS; r2++) {
+						guess.delete(sudoku[r2][c].num);
+					}
+					for (let c2=0; c2<VALS; c2++) {
+						guess.delete(sudoku[r][c2].num);
+					}
+					const {q, i} = rc2qi(r, c);
+					for (let i2=0; i2<VALS; i2++) {
+						const {r: r2, c: c2} = qi2rc(q, i2);
+						guess.delete(sudoku[r2][c2].num);
+					}
+				}
+			});
+		}
+
+		function fixSudokuV0(sudoku, limit=0.5) {
+			for(let r=0; r<VALS; r++) {
+				for(let c=0; c<VALS; c++) {
+					if (Math.random() > limit) {
+						sudoku[r][c].fixed = true;	
+					} else {
+						sudoku[r][c].num = 0;
+					}
+				}
+			}
+			return sudoku;
+		}
+
+		function fixSudokuV1(sudoku) {
+			let pairs = getFilledNotFixedPairs(sudoku);
+			while (pairs.length > 0) {
+				const rndPair = Math.floor(Math.random() * pairs.length);
+				const [r, c] = pairs[rndPair];
+				const tmpSudoku = copySudoku(sudoku);
+				tmpSudoku[r][c].num = 0;
+				fillGuesses(tmpSudoku);
+				resolveSingleOptionsInSudoku(tmpSudoku);
+				if (isSudokuFinished(tmpSudoku)) {
+					sudoku[r][c].num = 0;
+				} else {
+					sudoku[r][c].fixed = true;
+				}
+				pairs = getFilledNotFixedPairs(sudoku);
+			}
+			return sudoku;
+		}
+
+		function genAndDrawNumbers() {
+			let sudoku;
+			while(true) {
+				try {
+					sudoku = genRandomSudoku();
+					break;
+				} catch(err) {
 					console.error(err);
-				});
+				}
+			}
+
+			field = fixSudokuV1(sudoku);
+
+			drawNumbers();
 		}
 
 
@@ -148,6 +253,53 @@
 			return true;
 		}
 
+		function getErrors(sudoku) {
+			const errors = new Set();
+			// check rows
+			for(let r=0; r<VALS; r++) {
+				for (let c1=1; c1<VALS; c1++) {
+					if (sudoku[r][c1].num) {
+						for (let c2=0; c2<c1; c2++) {
+							if (sudoku[r][c1].num == sudoku[r][c2].num) {
+								errors.add(r*VALS + c1);
+								errors.add(r*VALS + c2);
+							}
+						}
+					}
+				}
+			}
+			// check columns
+			for (let c=0; c<VALS; c++) {
+				for(let r1=1; r1<VALS; r1++) {
+					if (sudoku[r1][c].num) {
+						for(let r2=0; r2<r1; r2++) {
+							if (sudoku[r1][c].num == sudoku[r2][c].num) {
+								errors.add(r1*VALS + c);
+								errors.add(r2*VALS + c);
+							}
+						}
+					}
+				}
+			}
+			// check quadrants
+			for(let q=0; q<VALS; q++) {
+				for (let i1=1; i1<VALS; i1++) {
+					const {r: r1, c: c1} = qi2rc(q, i1);
+					if (sudoku[r1][c1].num) {
+						for (let i2=0; i2<i1; i2++) {
+							const {r: r2, c: c2} = qi2rc(q, i2);
+							if (sudoku[r1][c1].num == sudoku[r2][c2].num) {
+								errors.add(r1*VALS + c1);
+								errors.add(r2*VALS + c2);
+							}
+						}
+					}
+				}
+			}
+			return Array.from(errors)
+				.map(i => [Math.floor(i/VALS), i%VALS])
+				.filter(([r,c]) => !sudoku[r][c].fixed);
+		}
 
 		function getEmptySudoku() {
 			const sudoku = [];
@@ -172,7 +324,7 @@
 			}
 		}
 
-		function getNonfixedPairs(sudoku) {
+		function getGuessedPairs(sudoku) {
 			const pairs = [];
 			traversSudoku(sudoku, ({num, guess}, r, c) => {
 				if(!num && guess.size > 1) {
@@ -183,15 +335,24 @@
 			for(let i=2; i<VALS; i++) {
 				if(pairs[i] && pairs[i].length>0) return pairs[i];
 			}
-			//return pairs.reduce((acc, p) => [...acc, ...p], []);
 			return [];
+		}
+
+		function getFilledNotFixedPairs(sudoku) {
+			const pairs = [];
+			traversSudoku(sudoku, ({num, fixed}, r, c) => {
+				if(num && !fixed) {
+					pairs.push([r,c]);
+				}
+			});
+			return pairs;
 		}
 
 		function copySudoku(sudoku) {
 			const sudoku2 = [];
-			traversSudoku(sudoku, ({num, guess}, r, c) => {
+			traversSudoku(sudoku, (cell, r, c) => {
 				if(!sudoku2[r]) sudoku2[r] = [];
-				sudoku2[r][c] = {num, guess: new Set(guess)}; 
+				sudoku2[r][c] = {...cell, guess: new Set(cell.guess)}; 
 			});
 			return sudoku2;
 		}
@@ -237,60 +398,21 @@
 			return valid;
 		}
 
-		function resolveSingleOptionsInSudoku(sudoku) {
+		function resolveSingleOptionsInSudoku(sudoku, all=true) {
 			let found;
 
 			do {
 				found = false;
-				const opts_r = [];
-				const opts_c = [];
-				const opts_q = [];
 				traversSudoku(sudoku, (cell, r, c) => {
 					if(!cell.num) {
 						if(cell.guess.size == 1) {
 							cell.num = Array.from(cell.guess)[0];
 							tryNumInSudoku(sudoku, {r, c, num: cell.num});
 							found = true;
-						} else {
-							const {q, i} = rc2qi(r, c);
-							for (let num of cell.guess) {
-								if(!opts_r[r]) opts_r[r]={};
-								if(!opts_r[r][num]) opts_r[r][num] = new Set();
-								opts_r[r][num].add(c);
-								if(!opts_c[c]) opts_c[c]={};
-								if(!opts_c[c][num]) opts_c[c][num] = new Set();
-								opts_c[c][num].add(r);
-								if(!opts_q[q]) opts_q[q]={};
-								if(!opts_q[q][num]) opts_q[q][num] = new Set();
-								opts_q[q][num].add(i);
-							}
 						}
 					}
 				});
-				for(let j=0; j<VALS; j++) {
-					for(let num=1; num<=VALS; num++) {
-						if(opts_r[j] && opts_r[j][num] && opts_r[j][num].size == 1) {
-							const r = j;
-							const c = Array.from(opts_r[j][num])[0];
-							tryNumInSudoku(sudoku, {r, c, num});
-							found = true;
-						}
-						if(opts_c[j] && opts_c[j][num] && opts_c[j][num].size == 1) {
-							const r = Array.from(opts_c[j][num])[0];
-							const c = j;
-							tryNumInSudoku(sudoku, {r, c, num});
-							found = true;
-						}
-						if(opts_q[j] && opts_q[j][num] && opts_q[j][num].size == 1) {
-							const q = j;
-							const i = Array.from(opts_q[j][num])[0];
-							const {r, c} = qi2rc(q, i);
-							tryNumInSudoku(sudoku, {r, c, num});
-							found = true;
-						}
-					}	
-				}
-			} while(found);
+			} while(found && all);
 		}
 
 		function isSudokuFinished(sudoku) {
@@ -304,63 +426,52 @@
 			return finished;
 		}
 
-		function countOpts(sudoku) {
-			let opts = 0;
-			traversSudoku(sudoku, ({num, guess}) => {
-				if (!num) opts += guess.size;
-			});
-			return opts;
-		}
-
-
 		function genRandomSudoku() {
-			return new Promise(function(resolve, reject) {
-				let tryNum = 0;
-				let sudoku = getEmptySudoku();
-				const stack = [];
-				const startTime = Date.now();
+			let tryNum = 0;
+			let sudoku = getEmptySudoku();
+			const stack = [];
+			const startTime = Date.now();
 
-				// seed
-				for(let i=0; i<SEED_PAIRS.length; i++) {
-					const [r,c] = SEED_PAIRS[i];
+			// seed
+			for(let i=0; i<SEED_PAIRS.length; i++) {
+				const [r,c] = SEED_PAIRS[i];
+				const {guess} = sudoku[r][c];
+				const num = Array.from(guess)[Math.floor(Math.random()*guess.size)];
+				tryNumInSudoku(sudoku, {r, c, num});
+			}
+
+			for(;tryNum<SEED_BATCH_SIZE; tryNum++) {
+				resolveSingleOptionsInSudoku(sudoku);
+				if (isSudokuValid(sudoku)) {
+					if (isSudokuFinished(sudoku)) {
+						console.log(`Generated sudoku in ${tryNum} steps and in ${Date.now() - startTime} ms`);
+						break;
+					}
+
+					const pairs = getGuessedPairs(sudoku);
+					const index = Math.floor(Math.random()*pairs.length);
+					const [r, c] = pairs[index];
 					const {guess} = sudoku[r][c];
 					const num = Array.from(guess)[Math.floor(Math.random()*guess.size)];
-					tryNumInSudoku(sudoku, {r, c, num});
+					stack.push({
+						sudoku: copySudoku(sudoku),
+						r,
+						c,
+						num
+					});
+					tryNumInSudoku(sudoku, {r,c, num});
+				} else {
+					const {sudoku: prevSudoku, r, c, num} = stack.pop();
+					sudoku = prevSudoku;
+					sudoku[r][c].guess.delete(num);
 				}
+			}
 
-				function next() {
-					for(let i=0; i<SEED_BATCH_SIZE; i++) {
-						tryNum++;
-						resolveSingleOptionsInSudoku(sudoku);
-						if (isSudokuValid(sudoku)) {
-							if (isSudokuFinished(sudoku)) {
-								console.log(`Generated sudoku in ${tryNum} steps and in ${Date.now() - startTime} ms`);
-								resolve(sudoku);
-								return;
-							}
+			if (tryNum >= SEED_BATCH_SIZE) {
+				throw `Failed to generate sudoku in ${SEED_BATCH_SIZE} steps`;
+			}
 
-							const pairs = getNonfixedPairs(sudoku);
-							const index = Math.floor(Math.random()*pairs.length);
-							const [r, c] = pairs[index];
-							const {guess} = sudoku[r][c];
-							const num = Array.from(guess)[Math.floor(Math.random()*guess.size)];
-							stack.push({
-								sudoku: copySudoku(sudoku),
-								r,
-								c,
-								num
-							});
-							tryNumInSudoku(sudoku, {r,c, num});
-						} else {
-							const {sudoku: prevSudoku, r, c, num} = stack.pop();
-							sudoku = prevSudoku;
-							sudoku[r][c].guess.delete(num);
-						}
-					}
-					setTimeout(next, 0);
-				}
-				setTimeout(next, 0);
-			});
+			return sudoku;
 		}
 
 		function qi2rc(q, i) {
@@ -389,7 +500,9 @@
 			while (buttonEl.firstChild) buttonEl.firstChild.remove();
 
 			if (num) {
-				if (!fixed) {
+				if (fixed) {
+					buttonEl.classList.remove('solved');
+				} else {
 					buttonEl.classList.add('solved');
 				}
 				buttonEl.classList.remove('guess');
@@ -399,6 +512,7 @@
 			}
 
 			buttonEl.classList.remove('solved');
+			buttonEl.dataset.num = 0;
 			if (guess.size > 0) {
 				buttonEl.classList.add('guess');
 				for(let v=1; v<=VALS; v++) {
@@ -451,6 +565,11 @@
 			}
 		}
 
+		function drawErrors(errors) {
+			dropClassSelection('error');
+			errors.forEach(([r, c]) => drawSelection({row: r+1, col: c+1}, 'error'));
+		} 
+
 		function initFieldEl() {
 			for(let r=1; r<=VALS; r++) {
 				for(let c=1; c<=VALS; c++) {
@@ -482,18 +601,26 @@
 			}
 		}
 
-		function initModeEl() {
+		function initActions() {
+			modeEl = document.getElementById('mode');
+			clearEl = document.getElementById('clear');
+			nextEl = document.getElementById('next');
+			backEl = document.getElementById('back');
+
 			modeEl.addEventListener('click', handleModeClick);
+			clearEl.addEventListener('click', handleClearClick);
+			nextEl.addEventListener('click', handleNextClick);
+			backEl.addEventListener('click', handleBackClick);
 			drawMode();
 		}
+
 
 		function init() {
 			fieldEl = document.getElementById('field');
 			buttonsEl = document.getElementById('buttons');
-			modeEl = document.getElementById('mode');
 			initFieldEl();
 			initButtonsEl();
-			initModeEl();
+			initActions();
 			genAndDrawNumbers();
 		}
 
@@ -504,7 +631,12 @@
 	<h1>Судоку</h1>
 	<div class="container">
 		<div id="field"></div>
-		<div id="options"><button id="mode"></button></div>
+		<div id="actions">
+			<button id="mode">M</button>
+			<button id="clear">C</button>
+			<button id="next">N</button>
+			<button id="back">B</button>
+		</div>
 		<div id="buttons"></div>
 	</div>
 </body>
