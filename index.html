@@ -7,29 +7,36 @@
 		* {margin: 0; padding: 0; box-sizing: border-box;}
 		html {font-family: sans-serif;}
 		h1 {font-size: 1rem; text-align: center; margin: 0.5rem 0;}
+		h2 {font-size: 1rem;}
 		button {cursor: pointer;}
 		.container {display: flex; gap: 0.5rem;}
-		#field {display: grid; margin: 0 calc(0.5rem - 1px); grid-template: repeat(9, 1rem) / repeat(9, 1rem); border: solid #000 1px; width: 9rem; box-sizing: content-box;}
-		#field button {border: solid #ccc 1px; background-color: #fff; line-height: 1rem; vertical-align: middle; text-align: center; font-size: 0.7rem;color: #000;}
+		#finish {display: none; position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: rgba(255,255,255,0.8);}
+		#finish.show {display: block;}
+		#finish > * {position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);}
+		#field {display: grid; margin: 0 calc(0.5rem - 1px); grid-template: repeat(9, 1rem) / repeat(9, 1rem); border: solid #000 1px; width: 9rem; box-sizing: content-box; position: relative;}
+		#field button {border: solid #ccc 1px; background-color: #fff; line-height: 1rem; vertical-align: middle; text-align: center; font-size: 0.7rem; color: #000;outline: none;}
 		#field button.solved {color: #336;}
 		#field button[data-top] {border-top-color: #000;}
 		#field button[data-left] {border-left-color: #000;}
 		#field button[data-right] {border-right-color: #000;}
 		#field button[data-bottom] {border-bottom-color: #000;}
 		#field button.guess {display: grid;grid-template: repeat(3, calc(0.333rem - 1px)) / repeat(3, calc(0.333rem - 1px));font-size: 0.29rem; line-height: calc(0.333rem - 1px);}
-		#field .selectedArea {background-color: #eee;}
-		#field .selectedNum {background-color: #ccc;}
-		html #field .error {background-color: #fcc; color: #f00;}
-		html #field .selectedCell {background-color: #ccf;}
-		#actions {display: flex; justify-content: space-around;}
+		#field button.selectedArea {background-color: #eee;}
+		#field button.selectedNum {background-color: #ccc;}
+		html #field button.error {background-color: #fcc; color: #f00;}
+		html #field button.selectedCell {background-color: #ccf;}
+		#actions {display: flex; justify-content: space-between;}
+		#actions > * {width: 1rem; height: 1rem; background-color: transparent; border: none; color: #000;}
+		#actions svg {fill: #000;}
+		#mode.guess > svg {fill: #336;}
 		#buttons {display: flex; color: #000;}
 		#buttons.guess {color: #336;}
+		#buttons > .disabled {visibility: hidden; pointer-events: none;}
 		.number {width: 1rem; height: 1rem; line-height: 1rem; vertical-align: middle; text-align: center; border: none; background-color: #fff; font-size: 0.7rem; color: inherit;}
-		#actions > * {width: 1rem; height: 1rem; background-color: #000; border: none; color: #fff;}
-		#actions > #mode.guess {background-color: #336;}
 
 		@media (orientation: landscape) {
 			html {font-size: 8.333vh;}
+			h1 {max-width: calc(10rem - 2px);}
 			.container {flex-direction: row;}
 			#actions {flex-direction: column;}
 			#buttons {flex-direction: column;}
@@ -47,7 +54,13 @@
 		const VALS=9;
 		const SEED_PAIRS = [[0,0],[1,3],[2,6],[3,1],[4,4],[5,7],[6,2],[7,5],[8,8]];
 		const SEED_BATCH_SIZE = 1000;
-		let fieldEl, buttonsEl, modeEl, clearEl, nextEl, backEl;
+		let SUPER = false;
+		try {
+			const params = new URLSearchParams(location.search);
+			if (params.has('super')) SUPER = true;
+		} catch(e) {
+			console.error('URLSearchParams failed or not supported');
+		}		let fieldEl, buttonsEl, modeEl, clearEl, nextEl, backEl, finishEl, emptyEl, restartEl;
 		let field = [];
 		const selected = {row: 0, col: 0, quad: 0, num: 0};
 		let mode = 0; // 0 - write, 1 - guess
@@ -56,37 +69,92 @@
 
 		function handleCellClick(e) {
 			const buttonEl = e.currentTarget;
-			selected.row = +buttonEl.dataset.row;
-			selected.col = +buttonEl.dataset.col;
-			selected.quad = +buttonEl.dataset.quad;
-			selected.num = +buttonEl.dataset.num;
+			putSelection(+buttonEl.dataset.row, +buttonEl.dataset.col);			
+			// selected.row = +buttonEl.dataset.row;
+			// selected.col = +buttonEl.dataset.col;
+			// selected.quad = +buttonEl.dataset.quad;
+			// selected.num = +buttonEl.dataset.num;
+			// drawAllSelections();
+		}
+
+		function putSelection(row, col) {
+			selected.row = row;
+			selected.col = col;
+			const {q: quad} = rc2qi(row-1, col-1);
+			selected.quad = quad + 1;
+			selected.num = field[row-1][col-1].num;
 			drawAllSelections();
 		}
 
 		function handleNumClick(e) {
-			const buttonEl = e.currentTarget;
-			const num = +buttonEl.dataset.num;
 			if (selected.row && selected.col) {
-				const cell = field[selected.row-1][selected.col-1];
-				if (cell.fixed) return;
-				if (mode === 0) {
-					selected.num = num;
-					cell.num = num;
+				const buttonEl = e.currentTarget;
+				const num = +buttonEl.dataset.num;
+				putNum(num);
+			}
+		}
+
+		function handleKeyDown(e) {
+			if (selected.row && selected.col) {
+				switch(e.key) {
+					case ' ':
+						handleClearClick();
+						e.preventDefault();
+						break;
+					case 'ArrowUp':
+						selected.row = selected.row - 1;
+						if (selected.row == 0) selected.row = VALS;
+						putSelection(selected.row, selected.col);
+						break;
+					case 'ArrowRight':
+						selected.col = selected.col + 1;
+						if (selected.col > VALS) selected.col = 1;
+						putSelection(selected.row, selected.col);
+						break;
+					case 'ArrowDown':
+						selected.row = selected.row + 1;
+						if (selected.row > VALS) selected.row = 1;
+						putSelection(selected.row, selected.col);
+						break;
+					case 'ArrowLeft':
+						selected.col = selected.col - 1;
+						if (selected.col == 0) selected.col = VALS;
+						putSelection(selected.row, selected.col);
+						break;
+					default:
+						const num = +e.key;
+						if (num && num >= 1 && num <= 9) {
+							putNum(num);
+						}
+						break;
+				}
+			}
+		}
+
+		function putNum(num) {
+			const r = selected.row-1;
+			const c = selected.col-1;
+			const cell = field[r][c];
+			if (cell.fixed) return;
+			if (mode === 0) {
+				selected.num = num;
+				tryNumInSudoku(field, {r, c, num});
+				drawNumbers();
+				drawNumButtons();
+			} else {
+				selected.num = 0;
+				cell.num = 0;
+				const {guess} = cell;
+				if (guess.has(num)) {
+					guess.delete(num);
 				} else {
-					selected.num = 0;
-					cell.num = 0;
-					const {guess} = cell;
-					if (guess.has(num)) {
-						guess.delete(num);
-					} else {
-						guess.add(num);
-					}
+					guess.add(num);
 				}
 				drawNumber(selected.row, selected.col, cell);
-				dropClassSelection('selectedNum');
-				selected.num && drawSelection({num: selected.num}, 'selectedNum');
-				drawErrors(getErrors(field));
 			}
+			drawNumSelection();
+			drawErrors();
+			drawFinish();
 		}
 
 		function handleModeClick() {
@@ -101,8 +169,10 @@
 				selected.num = 0;
 				cell.num = 0;
 				drawNumber(selected.row, selected.col, cell);
-				dropClassSelection('selectedNum');
-				drawErrors(getErrors(field));
+				drawNumButtons();
+				drawNumSelection();
+				drawErrors();
+				drawFinish();
 			}
 		}
 
@@ -111,23 +181,6 @@
 			stackField.push(field);
 			field = copySudoku(field);
 			switch(testCount) {
-				// case 1:
-				// 	const pairs = getFilledNotFixedPairs(field);
-				// 	if (pairs.length > 0) {
-				// 		const rndPair = Math.floor(Math.random() * pairs.length);
-				// 		const [r, c] = pairs[rndPair];
-				// 		const tmpSudoku = copySudoku(field);
-				// 		tmpSudoku[r][c].num = 0;
-				// 		fillGuesses(tmpSudoku);
-				// 		resolveSingleOptionsInSudoku(tmpSudoku);
-				// 		if (isSudokuFinished(tmpSudoku)) {
-				// 			field[r][c].num = 0;
-				// 		} else {
-				// 			field[r][c].fixed = true;
-				// 		}
-				// 		testCount--;
-				// 	}
-				// 	break;
 				case 1:
 					fillGuesses(field);
 					break;
@@ -135,8 +188,7 @@
 					resolveSingleOptionsInSudoku(field, false);
 					break;
 			}
-			drawNumbers();
-			drawErrors(getErrors(field));
+			drawAll();
 		}
 
 		function handleBackClick() {
@@ -144,8 +196,21 @@
 			if (stackField.length) {
 				field = stackField.pop();
 			}
-			drawNumbers();
-			drawErrors(getErrors(field));
+			drawAll();
+		}
+
+		function handleEmptyClick() {
+			stackField = [];
+			testCount = 0;
+			field = getEmptySudoku(false);
+			drawAll();
+		}
+
+		function handleRestartClick() {
+			stackField = [];
+			testCount = 0;
+			genNewSudoku();
+			drawAll();
 		}
 
 		function fillGuesses(sudoku) {
@@ -201,7 +266,7 @@
 			return sudoku;
 		}
 
-		function genAndDrawNumbers() {
+		function genNewSudoku() {
 			let sudoku;
 			while(true) {
 				try {
@@ -213,8 +278,6 @@
 			}
 
 			field = fixSudokuV1(sudoku);
-
-			drawNumbers();
 		}
 
 
@@ -301,13 +364,15 @@
 				.filter(([r,c]) => !sudoku[r][c].fixed);
 		}
 
-		function getEmptySudoku() {
+		function getEmptySudoku(fillGuesses = true) {
 			const sudoku = [];
 			for (let r=0; r<VALS; r++) {
 				const row = [];
 				for (let c=0; c<VALS; c++) {
 					const guess = new Set();
-					for (let v=1; v<=VALS; v++) guess.add(v);
+					if (fillGuesses) {
+						for (let v=1; v<=VALS; v++) guess.add(v);
+					}
 					row.push({num: 0, guess});
 				}
 				sudoku.push(row);
@@ -540,7 +605,7 @@
 		function drawSelection(types, cls) {
 			Array.from(document.querySelectorAll(
 				Object.entries(types)
-					.reduce((acc, [type, val]) => `${acc}[data-${type}="${val}"]`, '')
+					.reduce((acc, [type, val]) => `${acc}[data-${type}="${val}"]`, '#field > ')
 			)).forEach(el => 
 				el.classList.add(cls)
 			);
@@ -555,20 +620,60 @@
 			selected.row && selected.col && drawSelection({row: selected.row, col: selected.col}, 'selectedCell');
 		}
 
+		function drawNumSelection() {
+			dropClassSelection('selectedNum');
+			selected.num && drawSelection({num: selected.num}, 'selectedNum');
+		}
+
 		function drawMode() {
 			if (mode === 0) {
-				modeEl.classList.remove('guess');
 				buttonsEl.classList.remove('guess');
+				modeEl.classList.remove('guess');
 			} else {
-				modeEl.classList.add('guess');
 				buttonsEl.classList.add('guess');
+				modeEl.classList.add('guess');
 			}
 		}
 
-		function drawErrors(errors) {
+		function drawErrors() {
 			dropClassSelection('error');
-			errors.forEach(([r, c]) => drawSelection({row: r+1, col: c+1}, 'error'));
+			getErrors(field).forEach(([r, c]) => drawSelection({row: r+1, col: c+1}, 'error'));
 		} 
+
+		function drawNumButtons() {
+			const numCount = {};
+			traversSudoku(field, ({num}) => {
+				if(num) {
+					if (!numCount[num]) numCount[num] = 0;
+					numCount[num]++;
+				}
+			});
+			for(let v=1; v<=VALS; v++) {
+				const buttonEl = document.querySelector(`#buttons > [data-num="${v}"]`);
+				if (numCount[v] >= VALS) {
+					buttonEl.classList.add('disabled');
+				} else {
+					buttonEl.classList.remove('disabled');
+					finish = false;
+				}
+			}
+		}
+
+		function drawFinish() {
+			if (isSudokuFinished(field) && isSudokuValid(field)) {
+				finishEl.classList.add('show');
+			} else {
+				finishEl.classList.remove('show');
+			}
+		}
+
+		function drawAll() {
+			drawNumbers();
+			drawNumButtons();
+			drawNumSelection();
+			drawErrors();
+			drawFinish();
+		}
 
 		function initFieldEl() {
 			for(let r=1; r<=VALS; r++) {
@@ -606,22 +711,39 @@
 			clearEl = document.getElementById('clear');
 			nextEl = document.getElementById('next');
 			backEl = document.getElementById('back');
+			emptyEl = document.getElementById('empty');
+			restartEl = document.getElementById('restart');
 
 			modeEl.addEventListener('click', handleModeClick);
 			clearEl.addEventListener('click', handleClearClick);
-			nextEl.addEventListener('click', handleNextClick);
-			backEl.addEventListener('click', handleBackClick);
+			restartEl.addEventListener('click', handleRestartClick);
+			if (SUPER) {
+				backEl.addEventListener('click', handleBackClick);
+				emptyEl.addEventListener('click', handleEmptyClick);
+				nextEl.addEventListener('click', handleNextClick);
+			} else {
+				[backEl, emptyEl, nextEl].forEach(el => {
+					el.style.display = 'none';
+				});
+			}
 			drawMode();
 		}
 
+		function initKeyDown() {
+			document.addEventListener('keydown', handleKeyDown, {capture: true});
+		}
 
 		function init() {
 			fieldEl = document.getElementById('field');
 			buttonsEl = document.getElementById('buttons');
+			finishEl = document.getElementById('finish');
 			initFieldEl();
 			initButtonsEl();
 			initActions();
-			genAndDrawNumbers();
+			initKeyDown();
+			genNewSudoku();
+			drawNumbers();
+			drawNumButtons();
 		}
 
 		window.onload = init;
@@ -630,12 +752,28 @@
 <body>
 	<h1>Судоку</h1>
 	<div class="container">
-		<div id="field"></div>
+		<div id="field">
+			<div id="finish"><h2>Пройдено!</h2></div>
+		</div>
 		<div id="actions">
-			<button id="mode">M</button>
-			<button id="clear">C</button>
-			<button id="next">N</button>
-			<button id="back">B</button>
+			<button id="mode">
+				<svg width="100%" height="100%" viewBox="0 0 485.219 485.22"><g><path d="M467.476,146.438l-21.445,21.455L317.35,39.23l21.445-21.457c23.689-23.692,62.104-23.692,85.795,0l42.886,42.897 C491.133,84.349,491.133,122.748,467.476,146.438z M167.233,403.748c-5.922,5.922-5.922,15.513,0,21.436 c5.925,5.955,15.521,5.955,21.443,0L424.59,189.335l-21.469-21.457L167.233,403.748z M60,296.54c-5.925,5.927-5.925,15.514,0,21.44 c5.922,5.923,15.518,5.923,21.443,0L317.35,82.113L295.914,60.67L60,296.54z M338.767,103.54L102.881,339.421 c-11.845,11.822-11.815,31.041,0,42.886c11.85,11.846,31.038,11.901,42.914-0.032l235.886-235.837L338.767,103.54z M145.734,446.572c-7.253-7.262-10.749-16.465-12.05-25.948c-3.083,0.476-6.188,0.919-9.36,0.919 c-16.202,0-31.419-6.333-42.881-17.795c-11.462-11.491-17.77-26.687-17.77-42.887c0-2.954,0.443-5.833,0.859-8.703 c-9.803-1.335-18.864-5.629-25.972-12.737c-0.682-0.677-0.917-1.596-1.538-2.338L0,485.216l147.748-36.986 C147.097,447.637,146.36,447.193,145.734,446.572z"/></g></svg>
+			</button>
+			<button id="clear">
+				<svg width="100%" height="100%" viewBox="0 0 24 24"><g style="transform: scale(1.22); transform-origin: center;"><path d="M16.24,3.56L21.19,8.5C21.97,9.29 21.97,10.55 21.19,11.34L12,20.53C10.44,22.09 7.91,22.09 6.34,20.53L2.81,17C2.03,16.21 2.03,14.95 2.81,14.16L13.41,3.56C14.2,2.78 15.46,2.78 16.24,3.56M4.22,15.58L7.76,19.11C8.54,19.9 9.8,19.9 10.59,19.11L14.12,15.58L9.17,10.63L4.22,15.58Z"/></g></svg>
+			</button>
+			<button id="restart">
+				<svg width="100%" height="100%" viewBox="0 0 155.724 155.723"><g><path d="M42.735,121.521c-12.77-10.273-20.942-26.025-20.942-43.691c0-26.114,17.882-47.992,42.051-54.23V9.154 C31.854,15.646,7.776,43.927,7.776,77.83c0,20.951,9.199,39.738,23.767,52.578C42.819,140.911,49.827,126.894,42.735,121.521z M123.589,24.746c-7.18-6.485-17.693,4.028-10.801,9.236c12.888,10.27,21.143,26.097,21.143,43.848 c0,26.118-17.885,48-42.052,54.234v14.449c31.99-6.499,56.068-34.776,56.068-68.684 C147.947,56.602,138.502,37.596,123.589,24.746z M70.037,35.707l22.813-13.661c3.319-1.988,3.326-5.226,0.018-7.228L69.844,0.883 c-3.312-1.999-5.985-0.49-5.969,3.381l0.124,28.035C64.009,36.168,66.714,37.695,70.037,35.707z M85.883,120.029l-23.027,13.935 c-3.311,2.002-3.304,5.239,0.019,7.228l22.811,13.662c3.319,1.984,6.03,0.462,6.047-3.412l0.12-28.034 C91.865,119.54,89.188,118.03,85.883,120.029z"/></g></svg>
+			</button>
+			<button id="back">
+				<svg width="100%" height="100%" height="20px" viewBox="0 0 18 20"><g transform="translate(-219.000000, -26.000000)" stroke="#000000" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(216.000000, 24.000000)"><g transform="translate(12.000000, 12.000000) scale(-1, 1) translate(-12.000000, -12.000000)"><g transform="translate(4.000000, 3.000000)" stroke-width="2"><path d="M0,9 L16,9"></path><path d="M16,9 L7.93774223,0.937742233"></path><path d="M16,9 L7.93774223,17.0622578"></path></g></g></g></g></svg>
+			</button>
+			<button id="empty">
+				<svg width="100%" height="100%" viewBox="0 0 32 32"><path d="  M25,10H7v17c0,1.105,0.895,2,2,2h14c1.105,0,2-0.895,2-2V10z" fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" stroke-width="2"/><path d="  M20,7h-8V5c0-1.105,0.895-2,2-2h4c1.105,0,2,0.895,2,2V7z" fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" stroke-width="2"/><path d="  M28,10H4V8c0-0.552,0.448-1,1-1h22c0.552,0,1,0.448,1,1V10z" fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" stroke-width="2"/><line fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" stroke-width="2" x1="16" x2="16" y1="15" y2="24"/><line fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" stroke-width="2" x1="12" x2="12" y1="15" y2="24"/><line fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" stroke-width="2" x1="20" x2="20" y1="15" y2="24"/></svg>
+			</button>
+			<button id="next">
+				<svg width="100%" height="100%" height="20px" viewBox="0 0 18 20"><g transform="translate(-219.000000, -26.000000)" stroke="#000000" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(216.000000, 24.000000)"><g transform="translate(12.000000, 12.000000) translate(-12.000000, -12.000000)"><g transform="translate(4.000000, 3.000000)" stroke-width="2"><path d="M0,9 L16,9"></path><path d="M16,9 L7.93774223,0.937742233"></path><path d="M16,9 L7.93774223,17.0622578"></path></g></g></g></g></svg>
+			</button>
 		</div>
 		<div id="buttons"></div>
 	</div>
