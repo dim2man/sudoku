@@ -29,6 +29,7 @@
 		#actions > * {width: 1rem; height: 1rem; background-color: transparent; border: none; color: #000;}
 		#actions svg {fill: #000;}
 		#mode.guess > svg {fill: #336;}
+		#arrow {--angle: 45deg; transform: rotate(var(--angle)); transform-origin: 24px 25px;}
 		#buttons {display: flex; color: #000;}
 		#buttons.guess {color: #336;}
 		#buttons > .disabled {visibility: hidden; pointer-events: none;}
@@ -54,13 +55,16 @@
 		const VALS=9;
 		const SEED_PAIRS = [[0,0],[1,3],[2,6],[3,1],[4,4],[5,7],[6,2],[7,5],[8,8]];
 		const SEED_BATCH_SIZE = 1000;
+		const LVL = {MIN: 0, MAX: 12, ANGLE_MIN: 45, ANGLE_MAX: 315};
 		let SUPER = false;
+		let LEVEL = 12;
 		try {
 			const params = new URLSearchParams(location.search);
 			if (params.has('super')) SUPER = true;
+			if (params.has('level')) LEVEL = +params.get('level');
 		} catch(e) {
 			console.error('URLSearchParams failed or not supported');
-		}		let fieldEl, buttonsEl, modeEl, clearEl, nextEl, backEl, finishEl, emptyEl, restartEl;
+		}		let fieldEl, buttonsEl, modeEl, clearEl, nextEl, backEl, finishEl, emptyEl, restartEl, levelEl, arrowEl;
 		let field = [];
 		const selected = {row: 0, col: 0, quad: 0, num: 0};
 		let mode = 0; // 0 - write, 1 - guess
@@ -204,6 +208,7 @@
 			testCount = 0;
 			field = getEmptySudoku(false);
 			drawAll();
+			resetSelection();
 		}
 
 		function handleRestartClick() {
@@ -211,6 +216,24 @@
 			testCount = 0;
 			genNewSudoku();
 			drawAll();
+			resetSelection();
+		}
+
+		function resetSelection() {
+			selected.row = 0;
+			selected.col = 0;
+			selected.quad = 0;
+			selected.num = 0;
+			drawAllSelections();
+		}
+
+		function handleLevelClick() {
+			if (LEVEL >= LVL.MAX) {
+				LEVEL = LVL.MIN;
+			} else {
+				LEVEL++;
+			}
+			drawArrow();
 		}
 
 		function fillGuesses(sudoku) {
@@ -277,7 +300,22 @@
 				}
 			}
 
-			field = fixSudokuV1(sudoku);
+			if (LEVEL < LVL.MAX) {
+				const solvedSudoku = copySudoku(sudoku);
+				field = fixSudokuV1(sudoku);
+				let pairs = getEmptyPairs(field);
+				let i = LEVEL;
+				while(i < LVL.MAX) {
+					const rndIndex = Math.floor(Math.random() * pairs.length);
+					const [r,c] = pairs[rndIndex];
+					field[r][c].num = solvedSudoku[r][c].num;
+					field[r][c].fixed = true;
+					pairs.splice(rndIndex, 1);
+					i++;
+				}
+			} else {
+				field = fixSudokuV1(sudoku);
+			}
 		}
 
 
@@ -413,6 +451,16 @@
 			return pairs;
 		}
 
+		function getEmptyPairs(sudoku) {
+			const pairs = [];
+			traversSudoku(sudoku, ({num, fixed}, r, c) => {
+				if(!num) {
+					pairs.push([r,c]);
+				}
+			});
+			return pairs;
+		}
+
 		function copySudoku(sudoku) {
 			const sudoku2 = [];
 			traversSudoku(sudoku, (cell, r, c) => {
@@ -468,15 +516,19 @@
 
 			do {
 				found = false;
-				traversSudoku(sudoku, (cell, r, c) => {
-					if(!cell.num) {
-						if(cell.guess.size == 1) {
-							cell.num = Array.from(cell.guess)[0];
-							tryNumInSudoku(sudoku, {r, c, num: cell.num});
+				// let options = [];
+				traversSudoku(sudoku, ({num, guess}, r, c) => {
+					if(!num) {
+						if(guess.size == 1) {
+							// options.push({r, c, num: Array.from(guess)[0]});
+							tryNumInSudoku(sudoku, {r, c, num: Array.from(guess)[0]});
 							found = true;
 						}
 					}
 				});
+				// for(let i=0; i<options.length; i++) {
+				// 	tryNumInSudoku(sudoku, options[i]);
+				// }
 			} while(found && all);
 		}
 
@@ -667,6 +719,10 @@
 			}
 		}
 
+		function drawArrow() {
+			arrowEl.style.cssText = `--angle: ${(LEVEL - LVL.MIN)/(LVL.MAX - LVL.MIN)*(LVL.ANGLE_MAX - LVL.ANGLE_MIN) + LVL.ANGLE_MIN}deg`;
+		}
+
 		function drawAll() {
 			drawNumbers();
 			drawNumButtons();
@@ -713,10 +769,13 @@
 			backEl = document.getElementById('back');
 			emptyEl = document.getElementById('empty');
 			restartEl = document.getElementById('restart');
+			levelEl = document.getElementById('level');
+			arrowEl = document.getElementById('arrow');
 
 			modeEl.addEventListener('click', handleModeClick);
 			clearEl.addEventListener('click', handleClearClick);
 			restartEl.addEventListener('click', handleRestartClick);
+			levelEl.addEventListener('click', handleLevelClick);
 			if (SUPER) {
 				backEl.addEventListener('click', handleBackClick);
 				emptyEl.addEventListener('click', handleEmptyClick);
@@ -727,6 +786,7 @@
 				});
 			}
 			drawMode();
+			drawArrow();
 		}
 
 		function initKeyDown() {
@@ -764,6 +824,18 @@
 			</button>
 			<button id="restart">
 				<svg width="100%" height="100%" viewBox="0 0 155.724 155.723"><g><path d="M42.735,121.521c-12.77-10.273-20.942-26.025-20.942-43.691c0-26.114,17.882-47.992,42.051-54.23V9.154 C31.854,15.646,7.776,43.927,7.776,77.83c0,20.951,9.199,39.738,23.767,52.578C42.819,140.911,49.827,126.894,42.735,121.521z M123.589,24.746c-7.18-6.485-17.693,4.028-10.801,9.236c12.888,10.27,21.143,26.097,21.143,43.848 c0,26.118-17.885,48-42.052,54.234v14.449c31.99-6.499,56.068-34.776,56.068-68.684 C147.947,56.602,138.502,37.596,123.589,24.746z M70.037,35.707l22.813-13.661c3.319-1.988,3.326-5.226,0.018-7.228L69.844,0.883 c-3.312-1.999-5.985-0.49-5.969,3.381l0.124,28.035C64.009,36.168,66.714,37.695,70.037,35.707z M85.883,120.029l-23.027,13.935 c-3.311,2.002-3.304,5.239,0.019,7.228l22.811,13.662c3.319,1.984,6.03,0.462,6.047-3.412l0.12-28.034 C91.865,119.54,89.188,118.03,85.883,120.029z"/></g></svg>
+			</button>
+			<button id="level">
+				<svg width="100%" height="100%" viewBox="0 0 48 48" fill="#000">
+					<g style="transform: scale(1.22); transform-origin: center;">
+					<path d="M35.4653 12.1208C32.5915 9.74505 28.9668 8.24436 25 8.02729L25 13L23 13L23 8.02729C19.0332 8.24437 15.4086 9.74503 12.5348 12.1207L15.5356 15.1213L14.1214 16.5356L11.065 13.4793C8.36313 16.2691 6.55677 19.9303 6.10881 24H10.0527V26H6C6.00246 30.2022 7.44565 34.0662 9.86416 37.1274L12.7825 34.209L14.1967 35.6232L11.1915 38.6285L11.2103 38.6475L9.78969 40.0553C6.21161 36.4446 4 31.4741 4 25.9892C4 14.949 12.9548 6 24 6C35.0452 6 44 14.949 44 25.9892C44 31.6236 41.6663 36.7148 37.9152 40.3471L36.5239 38.9103L36.5365 38.898L33.0594 35.4209L34.4736 34.0067L37.894 37.427C40.4578 34.3201 41.9975 30.3403 42 26H37.6843V24H41.8912C41.4432 19.9303 39.6369 16.2692 36.9351 13.4794L33.9999 16.4142L32.5858 14.9999L35.4653 12.1208Z"/>
+					<g style="--angle: 180deg;" id="arrow">
+					<g style="transform: scale(1, -1); transform-origin: 24px 31px;">
+					<path d="M20.6265 37.7042C20.5982 38.0964 20.714 38.4854 20.9522 38.7983L22.8746 41.0096C24.0001 41.5001 24.5001 41.5001 25.4427 41.0096L27.3651 38.7983C27.6033 38.4854 27.7191 38.0964 27.6908 37.7042L25.3096 23.9021C25.1654 21.9052 23.1404 21.8871 22.9961 23.8839L20.6265 37.7042Z"/>
+					</g>
+					</g>
+					</g>
+				</svg>
 			</button>
 			<button id="back">
 				<svg width="100%" height="100%" height="20px" viewBox="0 0 18 20"><g transform="translate(-219.000000, -26.000000)" stroke="#000000" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(216.000000, 24.000000)"><g transform="translate(12.000000, 12.000000) scale(-1, 1) translate(-12.000000, -12.000000)"><g transform="translate(4.000000, 3.000000)" stroke-width="2"><path d="M0,9 L16,9"></path><path d="M16,9 L7.93774223,0.937742233"></path><path d="M16,9 L7.93774223,17.0622578"></path></g></g></g></g></svg>
