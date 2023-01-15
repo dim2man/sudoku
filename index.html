@@ -56,7 +56,7 @@
 		const VALS=9;
 		const SEED_PAIRS = [[0,0],[1,3],[2,6],[3,1],[4,4],[5,7],[6,2],[7,5],[8,8]];
 		const SEED_BATCH_SIZE = 1000;
-		const LVL = {MIN: 0, MAX: 12, ANGLE_MIN: 45, ANGLE_MAX: 315};
+		const LVL = {MIN: 0, MAX: 12, QUICK_ERROR_LEVEL_COUNT: 3, ANGLE_MIN: 45, ANGLE_MAX: 315};
 		let SUPER = false;
 		let LEVEL = 12;
 		try {
@@ -78,7 +78,7 @@
 			console.error('URLSearchParams failed or not supported');
 		}
 		let fieldEl, buttonsEl, modeEl, clearEl, nextEl, backEl, finishEl, emptyEl, restartEl, levelEl, arrowEl;
-		let field = [];
+		let field, solvedField;
 		const selected = {row: 0, col: 0, quad: 0, num: 0};
 		let mode = 0; // 0 - write, 1 - guess
 		let testCount = 0;
@@ -309,21 +309,19 @@
 				}
 			}
 
+			solvedField = copySudoku(sudoku);
+			field = fixSudokuV1(sudoku);
 			if (LEVEL < LVL.MAX) {
-				const solvedSudoku = copySudoku(sudoku);
-				field = fixSudokuV1(sudoku);
 				let pairs = getEmptyPairs(field);
 				let i = LEVEL;
 				while(i < LVL.MAX) {
 					const rndIndex = Math.floor(Math.random() * pairs.length);
 					const [r,c] = pairs[rndIndex];
-					field[r][c].num = solvedSudoku[r][c].num;
+					field[r][c].num = solvedField[r][c].num;
 					field[r][c].fixed = true;
 					pairs.splice(rndIndex, 1);
 					i++;
 				}
-			} else {
-				field = fixSudokuV1(sudoku);
 			}
 		}
 
@@ -365,47 +363,58 @@
 
 		function getErrors(sudoku) {
 			const errors = new Set();
-			// check rows
-			for(let r=0; r<VALS; r++) {
-				for (let c1=1; c1<VALS; c1++) {
-					if (sudoku[r][c1].num) {
-						for (let c2=0; c2<c1; c2++) {
-							if (sudoku[r][c1].num == sudoku[r][c2].num) {
-								errors.add(r*VALS + c1);
-								errors.add(r*VALS + c2);
+
+ 			if (solvedField && LEVEL <= LVL.MIN + LVL.QUICK_ERROR_LEVEL_COUNT) {
+ 				// compare 2 fields
+ 				traversSudoku(sudoku, ({num}, r, c) => {
+					if(num && num !== solvedField[r][c].num) {
+						errors.add(r*VALS + c);
+					}
+				});
+ 			} else {
+				// check rows
+				for(let r=0; r<VALS; r++) {
+					for (let c1=1; c1<VALS; c1++) {
+						if (sudoku[r][c1].num) {
+							for (let c2=0; c2<c1; c2++) {
+								if (sudoku[r][c1].num == sudoku[r][c2].num) {
+									errors.add(r*VALS + c1);
+									errors.add(r*VALS + c2);
+								}
 							}
 						}
 					}
 				}
-			}
-			// check columns
-			for (let c=0; c<VALS; c++) {
-				for(let r1=1; r1<VALS; r1++) {
-					if (sudoku[r1][c].num) {
-						for(let r2=0; r2<r1; r2++) {
-							if (sudoku[r1][c].num == sudoku[r2][c].num) {
-								errors.add(r1*VALS + c);
-								errors.add(r2*VALS + c);
+				// check columns
+				for (let c=0; c<VALS; c++) {
+					for(let r1=1; r1<VALS; r1++) {
+						if (sudoku[r1][c].num) {
+							for(let r2=0; r2<r1; r2++) {
+								if (sudoku[r1][c].num == sudoku[r2][c].num) {
+									errors.add(r1*VALS + c);
+									errors.add(r2*VALS + c);
+								}
 							}
 						}
 					}
 				}
-			}
-			// check quadrants
-			for(let q=0; q<VALS; q++) {
-				for (let i1=1; i1<VALS; i1++) {
-					const {r: r1, c: c1} = qi2rc(q, i1);
-					if (sudoku[r1][c1].num) {
-						for (let i2=0; i2<i1; i2++) {
-							const {r: r2, c: c2} = qi2rc(q, i2);
-							if (sudoku[r1][c1].num == sudoku[r2][c2].num) {
-								errors.add(r1*VALS + c1);
-								errors.add(r2*VALS + c2);
+				// check quadrants
+				for(let q=0; q<VALS; q++) {
+					for (let i1=1; i1<VALS; i1++) {
+						const {r: r1, c: c1} = qi2rc(q, i1);
+						if (sudoku[r1][c1].num) {
+							for (let i2=0; i2<i1; i2++) {
+								const {r: r2, c: c2} = qi2rc(q, i2);
+								if (sudoku[r1][c1].num == sudoku[r2][c2].num) {
+									errors.add(r1*VALS + c1);
+									errors.add(r2*VALS + c2);
+								}
 							}
 						}
 					}
 				}
-			}
+ 			}
+
 			return Array.from(errors)
 				.map(i => [Math.floor(i/VALS), i%VALS])
 				.filter(([r,c]) => !sudoku[r][c].fixed);
