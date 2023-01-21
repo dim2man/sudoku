@@ -5,7 +5,7 @@
 	<title>Судоку</title>
 	<style type="text/css">
 		* {margin: 0; padding: 0; box-sizing: border-box;}
-		html {font-family: sans-serif;}
+		html {font-family: sans-serif;--solve: #228;--white: #fff;--black: #000;--error: #f00;--border: #ccc;--select: #eee;--select-bg: #ccf;--error-bg: #fcc;}
 		h1 {font-size: 1rem; text-align: center; margin: 0.5rem 0;}
 		h2 {font-size: 1rem;}
 		button {cursor: pointer;}
@@ -13,27 +13,27 @@
 		#finish {display: none; position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: rgba(255,255,255,0.8);}
 		#finish.show {display: block;}
 		#finish > * {position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);}
-		#field {display: grid; margin: 0 calc(0.5rem - 1px); grid-template: repeat(9, 1rem) / repeat(9, 1rem); border: solid #000 1px; width: 9rem; box-sizing: content-box; position: relative;}
-		#field button {border: solid #ccc 1px; background-color: #fff; line-height: 1rem; vertical-align: middle; text-align: center; font-size: 0.7rem; color: #000;outline: none;}
-		#field button.solved {color: #336;}
-		#field button[data-top] {border-top-color: #000;}
-		#field button[data-left] {border-left-color: #000;}
-		#field button[data-right] {border-right-color: #000;}
-		#field button[data-bottom] {border-bottom-color: #000;}
+		#field {display: grid; margin: 0 calc(0.5rem - 1px); grid-template: repeat(9, 1rem) / repeat(9, 1rem); border: solid var(--black) 1px; width: 9rem; box-sizing: content-box; position: relative;}
+		#field button {border: solid var(--border) 1px; background-color: var(--white); line-height: 1rem; vertical-align: middle; text-align: center; font-size: 0.7rem; color: var(--black);outline: none;}
+		#field button.solved {color: var(--solve);}
+		#field button[data-top] {border-top-color: var(--black);}
+		#field button[data-left] {border-left-color: var(--black);}
+		#field button[data-right] {border-right-color: var(--black);}
+		#field button[data-bottom] {border-bottom-color: var(--black);}
 		#field button.guess {display: grid;grid-template: repeat(3, calc(0.333rem - 1px)) / repeat(3, calc(0.333rem - 1px));font-size: 0.29rem; line-height: calc(0.333rem - 1px);}
-		#field button.selectedArea {background-color: #eee;}
-		#field button.selectedNum {background-color: #ccc;}
-		html #field button.error {background-color: #fcc; color: #f00;}
-		html #field button.selectedCell {background-color: #ccf;}
+		#field button.selectedArea {background-color: var(--select);}
+		#field button.selectedNum {background-color: var(--border);}
+		html #field button.error {background-color: var(--error-bg); color: var(--error);}
+		html #field button.selectedCell {background-color: var(--select-bg);}
 		#actions {display: flex; justify-content: space-between;}
-		#actions > * {width: 1rem; height: 1rem; background-color: transparent; border: none; color: #000;}
-		#actions svg {fill: #000;}
-		#mode.guess > svg {fill: #336;}
+		#actions > * {width: 1rem; height: 1rem; background-color: transparent; border: none; color: var(--black);}
+		#actions svg {fill: var(--black);}
+		#mode.guess > svg {fill: var(--solve);}
 		#arrow {--angle: 45deg; transform: rotate(var(--angle)); transform-origin: 24px 25px;}
-		#buttons {display: flex; color: #000;}
-		#buttons.guess {color: #336;}
+		#buttons {display: flex; color: var(--black);}
+		#buttons.guess {color: var(--solve);}
 		#buttons > .disabled {visibility: hidden; pointer-events: none;}
-		.number {width: 1rem; height: 1rem; line-height: 1rem; vertical-align: middle; text-align: center; border: none; background-color: #fff; font-size: 0.7rem; color: inherit;}
+		.number {width: 1rem; height: 1rem; line-height: 1rem; vertical-align: middle; text-align: center; border: none; background-color: var(--white); font-size: 0.7rem; color: inherit;}
 
 		@media (orientation: landscape) {
 			html {font-size: 8.333vh;}
@@ -749,6 +749,17 @@
 			drawFinish();
 		}
 
+		function listenClick(el, func) {
+			el.addEventListener('mousedown', (e) => {
+				e.stopPropagation();
+				return func(e);
+			});
+			el.addEventListener('touchstart', (e) => {
+				e.stopPropagation();
+				return func(e);
+			});
+		}
+
 		function initFieldEl() {
 			for(let r=1; r<=VALS; r++) {
 				for(let c=1; c<=VALS; c++) {
@@ -763,7 +774,7 @@
 					if(r%3 === 0) buttonEl.dataset.bottom = true;
 					if(c%3 === 1) buttonEl.dataset.left = true;
 					if(c%3 === 0) buttonEl.dataset.right = true;
-					buttonEl.addEventListener('click', handleCellClick);
+					listenClick(buttonEl, handleCellClick);
 					fieldEl.appendChild(buttonEl);
 				}
 			}
@@ -773,7 +784,7 @@
 			for(let v=1; v<=VALS; v++) {
 				const buttonEl = document.createElement('button');
 				buttonEl.dataset.num = v;
-				buttonEl.addEventListener('click', handleNumClick);
+				listenClick(buttonEl, handleNumClick);
 				buttonEl.classList.add('number');
 				buttonEl.appendChild(document.createTextNode(v));
 				buttonsEl.appendChild(buttonEl);
@@ -790,14 +801,14 @@
 			levelEl = document.getElementById('level');
 			arrowEl = document.getElementById('arrow');
 
-			modeEl.addEventListener('click', handleModeClick);
-			clearEl.addEventListener('click', handleClearClick);
-			restartEl.addEventListener('click', handleRestartClick);
-			levelEl.addEventListener('click', handleLevelClick);
+			listenClick(modeEl, handleModeClick);
+			listenClick(clearEl, handleClearClick);
+			listenClick(restartEl, handleRestartClick);
+			listenClick(levelEl, handleLevelClick);
 			if (SUPER) {
-				backEl.addEventListener('click', handleBackClick);
-				emptyEl.addEventListener('click', handleEmptyClick);
-				nextEl.addEventListener('click', handleNextClick);
+				listenClick(backEl, handleBackClick);
+				listenClick(emptyEl, handleEmptyClick);
+				listenClick(nextEl, handleNextClick);
 			} else {
 				[backEl, emptyEl, nextEl].forEach(el => {
 					el.style.display = 'none';
