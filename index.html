@@ -750,11 +750,7 @@
 		}
 
 		function listenClick(el, func) {
-			el.addEventListener('mousedown', (e) => {
-				e.stopPropagation();
-				return func(e);
-			});
-			el.addEventListener('touchstart', (e) => {
+			el.addEventListener('pointerdown', (e) => {
 				e.stopPropagation();
 				return func(e);
 			});
