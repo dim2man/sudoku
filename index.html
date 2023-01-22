@@ -56,7 +56,7 @@
 		const VALS=9;
 		const SEED_PAIRS = [[0,0],[1,3],[2,6],[3,1],[4,4],[5,7],[6,2],[7,5],[8,8]];
 		const SEED_BATCH_SIZE = 1000;
-		const LVL = {MIN: 0, MAX: 12, QUICK_ERROR_LEVEL_COUNT: 3, ANGLE_MIN: 45, ANGLE_MAX: 315};
+		const LVL = {MIN: 0, V1MAX: 8, MAX: 12, QUICK_ERROR_LEVEL_COUNT: 3, ANGLE_MIN: 45, ANGLE_MAX: 315};
 		let SUPER = false;
 		let LEVEL = 12;
 		try {
@@ -298,6 +298,36 @@
 			return sudoku;
 		}
 
+		function fixSudokuV2(sudoku) {
+			fixSudokuV1(sudoku);
+
+			// drop fixed
+			traversSudoku(sudoku, (cell) => {
+				if(cell.fixed) {
+					cell.fixed = false;
+				}
+			});
+
+			let removed = 0;
+			let pairs = getFilledNotFixedPairs(sudoku);
+			while (pairs.length > 0) {
+				const rndPair = Math.floor(Math.random() * pairs.length);
+				const [r, c] = pairs[rndPair];
+				const tmpSudoku = copySudoku(sudoku);
+				tmpSudoku[r][c].num = 0;
+				const invalidSudoku = hasMoreThanOneSolves(tmpSudoku);
+				if (!invalidSudoku) {
+					sudoku[r][c].num = 0;
+					removed++;
+				} else {
+					sudoku[r][c].fixed = true;
+				}
+				pairs = getFilledNotFixedPairs(sudoku);
+			}
+			console.log(`removed=${removed}`);
+			return sudoku;
+		}
+
 		function genNewSudoku() {
 			let sudoku;
 			while(true) {
@@ -309,12 +339,14 @@
 				}
 			}
 
+			const startTime = Date.now();
 			solvedField = copySudoku(sudoku);
-			field = fixSudokuV1(sudoku);
-			if (LEVEL < LVL.MAX) {
+			field = LEVEL <= LVL.V1MAX ? fixSudokuV1(sudoku) : fixSudokuV2(sudoku);
+			if (LEVEL !== LVL.MAX && LEVEL !== LVL.V1MAX) {
 				let pairs = getEmptyPairs(field);
 				let i = LEVEL;
-				while(i < LVL.MAX) {
+				let limit = LEVEL <= LVL.V1MAX ? LVL.V1MAX : LVL.MAX;
+				while(i < limit) {
 					const rndIndex = Math.floor(Math.random() * pairs.length);
 					const [r,c] = pairs[rndIndex];
 					field[r][c].num = solvedField[r][c].num;
@@ -323,6 +355,7 @@
 					i++;
 				}
 			}
+			console.log(`Maked a game in ${Date.now() - startTime}ms`);
 		}
 
 
@@ -364,7 +397,8 @@
 		function getErrors(sudoku) {
 			const errors = new Set();
 
- 			if (solvedField && LEVEL <= LVL.MIN + LVL.QUICK_ERROR_LEVEL_COUNT) {
+			const limit = LEVEL <= LVL.V1MAX ? LVL.MIN : LVL.V1MAX;
+ 			if (solvedField && LEVEL <= limit + LVL.QUICK_ERROR_LEVEL_COUNT) {
  				// compare 2 fields
  				traversSudoku(sudoku, ({num}, r, c) => {
 					if(num && num !== solvedField[r][c].num) {
@@ -527,6 +561,73 @@
 				qs[q].add(num);
 			});
 			return valid;
+		}
+
+		function sudoku2string(sudoku) {
+			const arr = [];
+			traversSudoku(sudoku, ({num}) => {
+				arr.push(num);
+			});
+			return arr.join('');
+		}
+
+		function string2sudoku(string) {
+			const arr = string.split('');
+			const sudoku = getEmptySudoku(false);
+			traversSudoku(sudoku, (o, r, c) => {
+				o.num = Number(arr[r*VALS + c]);
+			});
+			return sudoku;
+		}
+
+		function hasMoreThanOneSolves(initSudoku) {
+			const solves = new Set();
+			const solveStack = [];
+
+			let tmpSudoku = copySudoku(initSudoku);
+			fillGuesses(tmpSudoku);
+
+			for(let tryNum=0; tryNum<SEED_BATCH_SIZE; tryNum++) {
+				resolveSingleOptionsInSudoku(tmpSudoku);
+				if (isSudokuValid(tmpSudoku)) {
+					valid = true;
+					if (isSudokuFinished(tmpSudoku)) {
+						finished = true;
+						solves.add(sudoku2string(tmpSudoku));
+						if (solves.size > 1) return true;
+						// pop from guesses
+						if (!solveStack.length) break;
+						const {r,c,opts: [num, ...opts],sudoku} = solveStack.pop();
+						if (opts.length) {
+							solveStack.push({r,c,opts,sudoku: copySudoku(sudoku)});
+						}
+						tmpSudoku = sudoku;
+						tryNumInSudoku(tmpSudoku, {r,c,num});
+					} else {
+						finished = false;
+						// guess some number
+						const pairs = getGuessedPairs(tmpSudoku);
+						const [r,c] = pairs[0];
+						const [num, ...opts] = Array.from(tmpSudoku[r][c].guess);
+						solveStack.push({r,c,opts,sudoku: copySudoku(tmpSudoku)});
+						tryNumInSudoku(tmpSudoku, {r,c,num});
+					}
+				} else {
+					valid = false;
+					finished = null;
+					// pop from guesses
+					if (!solveStack.length) break;
+					const {r,c,opts: [num, ...opts],sudoku} = solveStack.pop();
+					if (opts.length) {
+						solveStack.push({r,c,opts,sudoku: copySudoku(sudoku)});
+					}
+					tmpSudoku = sudoku;
+					tryNumInSudoku(tmpSudoku, {r,c,num});
+				}
+			}
+
+			// return Array.from(solves).map(string2sudoku);
+			return solves.size > 1;
 		}
 
 		function resolveSingleOptionsInSudoku(sudoku, all=true) {
