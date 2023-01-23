@@ -52,6 +52,7 @@
 	</style>
 	<script type="text/javascript">
 		const LS_LEVEL_KEY = 'sudoku_level';
+		const LS_SAVED_GAME = 'sudoku_saved_game';
 		const SELECTED_CLASSES = ['selectedCell', 'selectedArea', 'selectedNum'];
 		const VALS=9;
 		const SEED_PAIRS = [[0,0],[1,3],[2,6],[3,1],[4,4],[5,7],[6,2],[7,5],[8,8]];
@@ -167,6 +168,7 @@
 			drawNumSelection();
 			drawErrors();
 			drawFinish();
+			saveField();
 		}
 
 		function handleModeClick() {
@@ -185,6 +187,7 @@
 				drawNumSelection();
 				drawErrors();
 				drawFinish();
+				saveField();
 			}
 		}
 
@@ -201,6 +204,7 @@
 					break;
 			}
 			drawAll();
+			saveField();
 		}
 
 		function handleBackClick() {
@@ -209,6 +213,7 @@
 				field = stackField.pop();
 			}
 			drawAll();
+			saveField();
 		}
 
 		function handleEmptyClick() {
@@ -217,6 +222,7 @@
 			field = getEmptySudoku(false);
 			drawAll();
 			resetSelection();
+			saveField();
 		}
 
 		function handleRestartClick() {
@@ -225,6 +231,7 @@
 			genNewSudoku();
 			drawAll();
 			resetSelection();
+			saveField();
 		}
 
 		function resetSelection() {
@@ -722,6 +729,51 @@
 			return {q, i};
 		}
 
+		function field2string() {
+			const arr = [];
+			traversSudoku(field, ({num, guess, fixed}, r, c) => {
+				if (!arr[r]) arr[r] = [];
+				arr[r][c] = [
+					num,
+					fixed ? 1 : 0,
+					Array.from(guess)					
+				];
+			});
+			return JSON.stringify(arr);
+		}
+
+		function string2field(string) {
+			const arr = JSON.parse(string);
+			const sudoku = getEmptySudoku(false);
+			traversSudoku(sudoku, (o, r, c) => {
+				const [num, fixed, guess] = arr[r][c];
+				o.num = num;
+				o.fixed = Boolean(fixed);
+				o.guess = new Set(guess);
+			});
+			return sudoku;
+		}
+
+		function saveField() {
+			try {
+				const stringified = field2string();
+				window.localStorage.setItem(LS_SAVED_GAME, stringified);
+			} catch(e) {
+				console.error('Failed to save field', e);
+			}
+		}
+
+		function loadField() {
+			try {
+				const stringified = window.localStorage.getItem(LS_SAVED_GAME);
+				if (!stringified) throw new Error('No saved game');
+				field = string2field(stringified);
+			} catch(e) {
+				console.error('Failed to load field', e);
+				throw e;
+			}
+		}
+
 		function drawNumbers() {
 			for(let r=1; r<=VALS; r++) {
 				for(let c=1; c<=VALS; c++) {
@@ -927,7 +979,13 @@
 			initButtonsEl();
 			initActions();
 			initKeyDown();
-			genNewSudoku();
+
+			try {
+				loadField();
+			} catch(e) {
+				genNewSudoku();
+				saveField();
+			}
 			drawNumbers();
 			drawNumButtons();
 		}
