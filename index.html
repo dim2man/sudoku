@@ -5,7 +5,7 @@
 	<title>Судоку</title>
 	<style type="text/css">
 		* {margin: 0; padding: 0; box-sizing: border-box;}
-		html {font-family: sans-serif;--solve: #228;--white: #fff;--black: #000;--error: #f00;--border: #ccc;--select: #eee;--select-bg: #ccf;--error-bg: #fcc;}
+		html {font-family: sans-serif;--solve: #228;--white: #fff;--black: #000;--error: #f33;--border: #aaa;--select: #c8c8c8;--select-num: #aaa;--select-bg: #88e;--error-bg: #fbb;}
 		h1 {font-size: 1rem; text-align: center; margin: 0.5rem 0;}
 		h2 {font-size: 1rem;}
 		button {cursor: pointer;}
@@ -22,7 +22,7 @@
 		#field button[data-bottom] {border-bottom-color: var(--black);}
 		#field button.guess {display: grid;grid-template: repeat(3, calc(0.333rem - 1px)) / repeat(3, calc(0.333rem - 1px));font-size: 0.29rem; line-height: calc(0.333rem - 1px);}
 		#field button.selectedArea {background-color: var(--select);}
-		#field button.selectedNum {background-color: var(--border);}
+		#field button.selectedNum {background-color: var(--select-num);}
 		html #field button.error {background-color: var(--error-bg); color: var(--error);}
 		html #field button.selectedCell {background-color: var(--select-bg);}
 		#actions {display: flex; justify-content: space-between;}
